@@ -8,7 +8,7 @@ __docformat__ = "reStructuredText"
 import random
 
 # Library imports
-import pygame
+import pygame 
 
 # pymunk imports
 import pymunk

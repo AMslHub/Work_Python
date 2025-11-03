@@ -5,7 +5,7 @@ It is possible to grab one of the crossings with the mouse
 
 __docformat__ = "reStructuredText"
 
-import pyglet
+import pyglet 
 
 import pymunk
 from pymunk.vec2d import Vec2d
