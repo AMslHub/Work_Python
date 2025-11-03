@@ -118,11 +118,14 @@ class BouncyBalls(object):
         :return:
         """
         mass = 10
-        radius = 25
+        # Größenvariation: Faktor im Bereich 0.5 .. 2.0
+        scale = random.uniform(0.5, 2.0)
+        radius = int(round(25 * scale))
         inertia = pymunk.moment_for_circle(mass, 0, radius, (0, 0))
         body = pymunk.Body(mass, inertia)
         x = random.randint(115, 350)
-        body.position = x, 200
+        # Fallhöhe verdoppeln: höhere Startposition (näher am oberen Bildschirmrand)
+        body.position = x, 80
         shape = pymunk.Circle(body, radius, (0, 0))
         shape.elasticity = 0.95
         shape.friction = 0.9
