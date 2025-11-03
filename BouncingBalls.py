@@ -56,11 +56,11 @@ class BouncyBalls(object):
         """
         # Main loop
         while self._running:
+            self._process_events()
+            self._apply_neighbor_attraction()
             # Progress time forward
             for x in range(self._physics_steps_per_frame):
                 self._space.step(self._dt)
-
-            self._process_events()
             self._update_balls()
             self._clear_screen()
             self._draw_objects()
@@ -131,6 +131,84 @@ class BouncyBalls(object):
         shape.friction = 0.9
         self._space.add(body, shape)
         self._balls.append(shape)
+
+    # --- Mutual attraction among nearest neighbors ---
+    _ATTR_MAX_NEIGHBORS = 5
+    _ATTR_G = 2.0e6  # strength factor; tuned for pixels + masses ~10
+    _ATTR_SOFTENING = 100.0  # pixels; avoids singularity at small r
+    _ATTR_MAX_FORCE = 2.0e3  # clamp force magnitude per pair (optional safety)
+
+    def _apply_neighbor_attraction(self) -> None:
+        # Apply symmetric, softened inverse-square attraction between each ball
+        # and up to its 5 nearest neighbors. Momentum-conserving: equal/opposite.
+        balls = self._balls
+        n = len(balls)
+        if n < 2:
+            return
+
+        # Build positions list for speed
+        positions = [b.body.position for b in balls]
+
+        # Helper to clamp vector magnitude
+        def clamp_force(vx: float, vy: float, max_f: float) -> tuple[float, float]:
+            mag2 = vx * vx + vy * vy
+            if mag2 <= 0:
+                return (0.0, 0.0)
+            if mag2 <= max_f * max_f:
+                return (vx, vy)
+            s = max_f / (mag2 ** 0.5)
+            return (vx * s, vy * s)
+
+        # For each ball, find indices of up to 5 nearest others
+        processed_pairs: set[tuple[int, int]] = set()
+        soft2 = self._ATTR_SOFTENING * self._ATTR_SOFTENING
+        for i in range(n):
+            pi = positions[i]
+            # Compute squared distances to all others
+            dists: list[tuple[float, int]] = []
+            for j in range(n):
+                if i == j:
+                    continue
+                pj = positions[j]
+                dx = pj.x - pi.x
+                dy = pj.y - pi.y
+                d2 = dx * dx + dy * dy
+                dists.append((d2, j))
+
+            # Take up to k nearest
+            dists.sort(key=lambda x: x[0])
+            for _, j in dists[: self._ATTR_MAX_NEIGHBORS]:
+                a, b = (i, j) if i < j else (j, i)
+                if (a, b) in processed_pairs:
+                    continue
+                processed_pairs.add((a, b))
+
+                bi = balls[i].body
+                bj = balls[j].body
+                pi = bi.position
+                pj = bj.position
+
+                dx = pj.x - pi.x
+                dy = pj.y - pi.y
+                r2 = dx * dx + dy * dy
+                if r2 <= 0:
+                    continue
+                rs2 = r2 + soft2
+                inv_r = rs2 ** -0.5
+                inv_r3 = inv_r * inv_r * inv_r
+
+                # Force magnitude based on softened inverse-square (accel ~ 1/r^2)
+                # Convert to force with masses mi,mj
+                mi = bi.mass
+                mj = bj.mass
+                scale = self._ATTR_G * mi * mj * inv_r3
+                fx = dx * scale
+                fy = dy * scale
+                fx, fy = clamp_force(fx, fy, self._ATTR_MAX_FORCE)
+
+                # Apply equal and opposite forces at body centers
+                bi.apply_force_at_world_point((fx, fy), pi)
+                bj.apply_force_at_world_point((-fx, -fy), pj)
 
     def _clear_screen(self) -> None:
         """
