@@ -5,7 +5,7 @@ Anforderungen:
 - Massen: m1 = m2 = 1 kg
 - Federkonstante: c = 200 N/m (beide Federn)
 - Erdbeschleunigung: g = 9.81 m/s^2
-- Visualisierung und Videoausgabe (5s)
+- Visualisierung und Videoausgabe (5s) 
 
 Hinweis zur Skalierung der Einheiten:
 - Positionen werden in Pixeln simuliert, mit PPM = 100 Pixel pro Meter.
@@ -13,12 +13,12 @@ Hinweis zur Skalierung der Einheiten:
 - Federsteifigkeit (N/m) wird in N/Pixel umgerechnet: k_px = k_m / PPM.
 - Dämpfung wird klein gewählt für Stabilität (ebenfalls pro Pixel skaliert).
 
-Videoausgabe:
+Videoausgabe:    
 - Versucht, mit imageio ein MP4 zu schreiben (output.mp4).
 - Falls imageio/ffmpeg nicht verfügbar ist, werden einzelne PNG-Frames
   nach ./frames gespeichert (als Fallback) und ein Hinweis ausgegeben.
 
-Abhängigkeiten:
+Abhängigkeiten: 
   pip install pygame pymunk imageio
   (Für MP4-Export ggf. ffmpeg im PATH, oder imageio-ffmpeg installiert.)
 """
@@ -26,7 +26,7 @@ Abhängigkeiten:
 from __future__ import annotations
 
 import os
-import math
+import math 
 import time
 from pathlib import Path
 
