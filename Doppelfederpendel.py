@@ -44,7 +44,7 @@ except Exception:  # pragma: no cover
 WIDTH, HEIGHT = 800, 600
 PPM = 100.0  # Pixel pro Meter
 FPS = 60
-DURATION_S = 10.0
+DURATION_S = 10.0 
 NUM_FRAMES = int(DURATION_S * FPS)
 
 GRAVITY_M_S2 = 9.81
@@ -75,6 +75,14 @@ CEIL_COLOR = (220, 220, 220)
 
 MASS_RADIUS = 12  # px
 
+# Zeichnungsradius abhängig von der Masse (Fläche ~ Masse ⇒ r ~ sqrt(m))
+def mass_to_draw_radius(mass: float) -> int:
+    base = MASS_RADIUS  # Basisradius für 1 kg
+    if mass <= 0:
+        return max(2, int(base))
+    r = base * math.sqrt(mass / 1.0)
+    return max(2, int(round(r)))
+
 # Linke Wand: 0.2 m links vom Aufhängepunkt, Darstellung und Physik-Parameter
 WALL_COLOR = (180, 220, 180)
 WALL_OFFSET_M = 0.25
@@ -98,7 +106,7 @@ def setup_space() -> tuple[pymunk.Space, pymunk.Body, pymunk.Body, Vec2d]:
 
     # Anfangsbedingungen: leichte horizontale Auslenkung, damit Bewegung sichtbar ist
     # Gleichgewichtslage ca. top_anchor.y + L1_PX + L2_PX
-    body1.position = top_anchor + (80, L1_PX + 10)  # leicht gedehnt und seitlich versetzt
+    body1.position = top_anchor + (120, L1_PX + 10)  # leicht gedehnt und seitlich versetzt
     body2.position = body1.position + (80, L2_PX + 10)
 
     shape1 = pymunk.Circle(body1, MASS_RADIUS)
@@ -161,9 +169,11 @@ def draw_scene(surface: pygame.Surface, body1: pymunk.Body, body2: pymunk.Body, 
     pygame.draw.line(surface, SPRING_COLOR, (int(top_anchor.x), int(top_anchor.y)), (int(p1.x), int(p1.y)), 2)
     pygame.draw.line(surface, SPRING_COLOR, (int(p1.x), int(p1.y)), (int(p2.x), int(p2.y)), 2)
 
-    # Massen
-    pygame.draw.circle(surface, MASS1_COLOR, (int(p1.x), int(p1.y)), MASS_RADIUS)
-    pygame.draw.circle(surface, MASS2_COLOR, (int(p2.x), int(p2.y)), MASS_RADIUS)
+    # Massen (Zeichnungsradius skaliert mit Masse)
+    r1 = mass_to_draw_radius(MASS_1)
+    r2 = mass_to_draw_radius(MASS_2)
+    pygame.draw.circle(surface, MASS1_COLOR, (int(p1.x), int(p1.y)), r1)
+    pygame.draw.circle(surface, MASS2_COLOR, (int(p2.x), int(p2.y)), r2)
 
 
 def ensure_dir(path: Path) -> None:
