@@ -15,6 +15,54 @@ import pymunk
 import pymunk.pygame_util
 
 
+# -----------------------------
+# Konfigurierbare Parameter
+# -----------------------------
+
+# Anzeige / Fenster (zum Bezug für Geometrien)
+WIDTH, HEIGHT = 600, 600
+WINDOW_SIZE = (WIDTH, HEIGHT)
+
+# Zeit / Integration
+DT = 1.0 / 60.0
+PHYSICS_STEPS_PER_FRAME = 1
+FPS_LIMIT = 50  # Rendering-Deckel (nicht Physik, aber hilfreich)
+
+# Gravitation
+GRAVITY = (0.0, 900.0)   #(0.0, 900.0)
+
+# Statische Geometrie (L-Form)
+# Einträge: ((x1, y1), (x2, y2), radius)
+STATIC_SEGMENTS = [
+    ((111.0, HEIGHT - 280), (407.0, HEIGHT - 246), 0.0),
+    ((407.0, HEIGHT - 246), (407.0, HEIGHT - 343), 0.0),
+]
+STATIC_ELASTICITY = 0.95
+STATIC_FRICTION = 0.9
+
+# Bälle
+BALL_MASS = 10.0
+BALL_RADIUS_BASE = 25.0
+BALL_SCALE_MIN = 0.5
+BALL_SCALE_MAX = 2.0
+BALL_START_X_MIN = 115
+BALL_START_X_MAX = 350
+BALL_START_Y = 80
+BALL_ELASTICITY = 0.98
+BALL_FRICTION = 0.9
+
+# Lebenszyklus der Bälle
+INITIAL_TICKS_TO_NEXT_BALL = 10
+TICKS_BETWEEN_BALLS = 100
+BALL_REMOVE_Y = 500  # y-Schwelle zum Entfernen
+
+# Nachbarschaftsanziehung (optionale Zusatzphysik)
+ATTR_MAX_NEIGHBORS = 0  # 0 = keine Anziehung
+ATTR_G = 2.0e6        # Stärke (angepasst an Pixel + Massen ~10)
+ATTR_SOFTENING = 100.0  # Pixel; verhindert Singularität bei kleinem r
+ATTR_MAX_FORCE = 2.0e3  # Begrenzung der Kraft pro Paar
+
+
 class BouncyBalls(object):
     """
     This class implements a simple scene in which there is a static platform (made up of a couple of lines)
@@ -24,17 +72,17 @@ class BouncyBalls(object):
     def __init__(self) -> None:
         # Space
         self._space = pymunk.Space()
-        self._space.gravity = (0.0, 900.0)
+        self._space.gravity = GRAVITY
 
         # Physics
         # Time step
-        self._dt = 1.0 / 60.0
+        self._dt = DT
         # Number of physics steps per screen frame
-        self._physics_steps_per_frame = 1
+        self._physics_steps_per_frame = PHYSICS_STEPS_PER_FRAME
 
         # pygame
         pygame.init()
-        self._screen = pygame.display.set_mode((600, 600))
+        self._screen = pygame.display.set_mode(WINDOW_SIZE)
         self._clock = pygame.time.Clock()
 
         self._draw_options = pymunk.pygame_util.DrawOptions(self._screen)
@@ -47,7 +95,7 @@ class BouncyBalls(object):
 
         # Execution control and time until the next ball spawns
         self._running = True
-        self._ticks_to_next_ball = 10
+        self._ticks_to_next_ball = INITIAL_TICKS_TO_NEXT_BALL
 
     def run(self) -> None:
         """
@@ -66,7 +114,7 @@ class BouncyBalls(object):
             self._draw_objects()
             pygame.display.flip()
             # Delay fixed time between frames
-            self._clock.tick(50)
+            self._clock.tick(FPS_LIMIT)
             pygame.display.set_caption("fps: " + str(self._clock.get_fps()))
 
     def _add_static_scenery(self) -> None:
@@ -76,12 +124,11 @@ class BouncyBalls(object):
         """
         static_body = self._space.static_body
         static_lines = [
-            pymunk.Segment(static_body, (111.0, 600 - 280), (407.0, 600 - 246), 0.0),
-            pymunk.Segment(static_body, (407.0, 600 - 246), (407.0, 600 - 343), 0.0),
+            pymunk.Segment(static_body, seg[0], seg[1], seg[2]) for seg in STATIC_SEGMENTS
         ]
         for line in static_lines:
-            line.elasticity = 0.95
-            line.friction = 0.9
+            line.elasticity = STATIC_ELASTICITY
+            line.friction = STATIC_FRICTION
         self._space.add(*static_lines)
 
     def _process_events(self) -> None:
@@ -105,9 +152,9 @@ class BouncyBalls(object):
         self._ticks_to_next_ball -= 1
         if self._ticks_to_next_ball <= 0:
             self._create_ball()
-            self._ticks_to_next_ball = 100
+            self._ticks_to_next_ball = TICKS_BETWEEN_BALLS
         # Remove balls that pass the configured y-threshold
-        balls_to_remove = [ball for ball in self._balls if ball.body.position.y > 500]
+        balls_to_remove = [ball for ball in self._balls if ball.body.position.y > BALL_REMOVE_Y]
         for ball in balls_to_remove:
             self._space.remove(ball, ball.body)
             self._balls.remove(ball)
@@ -117,26 +164,22 @@ class BouncyBalls(object):
         Create a ball.
         :return:
         """
-        mass = 10
+        mass = float(BALL_MASS)
         # Größenvariation: Faktor im Bereich 0.5 .. 2.0
-        scale = random.uniform(0.5, 2.0)
-        radius = int(round(25 * scale))
+        scale = random.uniform(BALL_SCALE_MIN, BALL_SCALE_MAX)
+        radius = int(round(BALL_RADIUS_BASE * scale))
         inertia = pymunk.moment_for_circle(mass, 0, radius, (0, 0))
         body = pymunk.Body(mass, inertia)
-        x = random.randint(115, 350)
+        x = random.randint(BALL_START_X_MIN, BALL_START_X_MAX)
         # Fallhöhe verdoppeln: höhere Startposition (näher am oberen Bildschirmrand)
-        body.position = x, 80
+        body.position = x, BALL_START_Y
         shape = pymunk.Circle(body, radius, (0, 0))
-        shape.elasticity = 0.98
-        shape.friction = 0.9
+        shape.elasticity = BALL_ELASTICITY
+        shape.friction = BALL_FRICTION
         self._space.add(body, shape)
         self._balls.append(shape)
 
     # --- Mutual attraction among nearest neighbors ---
-    _ATTR_MAX_NEIGHBORS = 5
-    _ATTR_G = 2.0e6  # strength factor; tuned for pixels + masses ~10
-    _ATTR_SOFTENING = 100.0  # pixels; avoids singularity at small r
-    _ATTR_MAX_FORCE = 2.0e3  # clamp force magnitude per pair (optional safety)
 
     def _apply_neighbor_attraction(self) -> None:
         # Apply symmetric, softened inverse-square attraction between each ball
@@ -161,7 +204,7 @@ class BouncyBalls(object):
 
         # For each ball, find indices of up to 5 nearest others
         processed_pairs: set[tuple[int, int]] = set()
-        soft2 = self._ATTR_SOFTENING * self._ATTR_SOFTENING
+        soft2 = ATTR_SOFTENING * ATTR_SOFTENING
         for i in range(n):
             pi = positions[i]
             # Compute squared distances to all others
@@ -177,7 +220,7 @@ class BouncyBalls(object):
 
             # Take up to k nearest
             dists.sort(key=lambda x: x[0])
-            for _, j in dists[: self._ATTR_MAX_NEIGHBORS]:
+            for _, j in dists[: ATTR_MAX_NEIGHBORS]:
                 a, b = (i, j) if i < j else (j, i)
                 if (a, b) in processed_pairs:
                     continue
@@ -201,10 +244,10 @@ class BouncyBalls(object):
                 # Convert to force with masses mi,mj
                 mi = bi.mass
                 mj = bj.mass
-                scale = self._ATTR_G * mi * mj * inv_r3
+                scale = ATTR_G * mi * mj * inv_r3
                 fx = dx * scale
                 fy = dy * scale
-                fx, fy = clamp_force(fx, fy, self._ATTR_MAX_FORCE)
+                fx, fy = clamp_force(fx, fy, ATTR_MAX_FORCE)
 
                 # Apply equal and opposite forces at body centers
                 bi.apply_force_at_world_point((fx, fy), pi)
