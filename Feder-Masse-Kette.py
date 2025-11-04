@@ -35,11 +35,14 @@ LV_M = 0.12                 # Vorspannungslänge lv (Start-Abstand pro Segment) 
 PIXELS_PER_METER = 50.0     # Skalierung [px/m]
 
 # Federparameter
-SPRING_STIFFNESS = 1200.0   # Federsteifigkeit (Pymunk-Einheiten)
-SPRING_DAMPING = 8.0       # Federdämpfung 8
+SPRING_STIFFNESS = 1200.0   # Federsteifigkeit [N/m]
+SPRING_DAMPING = 8.0       # Federdämpfung [N·s/m]
+
+# Körpergeometrie (SI)
+MASS_RADIUS_M = 0.04       # Radius der Massen [m]
 
 # Gravitation und Reibung (Dämpfung)
-GRAVITY = (0.0, 0.0)      # initial g=0; z.B. (0, 9.81*PIXELS_PER_METER)
+GRAVITY = (0.0, 0.0)      # initial g=0; SI: (0, -9.81) für ~1g nach unten
 SPACE_DAMPING = 1.0       # =1.0: keine Dämpfung, <1.0: Dämpfung
                           # space.damping ist ein Multiplikationsfaktor 
                           # für die Geschwindigkeit pro Integrationsschritt
@@ -51,7 +54,7 @@ ANCHOR_LIFT_M = 0.5         # Sprung nach oben [m]
 # Fenster / Darstellung
 WIDTH, HEIGHT = 1200, 600
 FPS_LIMIT = 60
-MASS_RADIUS_PX = 2          # Darstellungsradius der Massen [px]
+MASS_RADIUS_PX = 2          # (veraltet) Darstellungsradius [px] – wird dynamisch aus MASS_RADIUS_M berechnet
 LINE_COLOR = (30, 144, 255) # Farbe der Federlinien (DodgerBlue)
 MASS_COLOR = (10, 10, 10)
 BG_COLOR = (245, 245, 245)
@@ -60,6 +63,14 @@ WALL_COLOR = (180, 180, 180)
 
 def m_to_px(x_m: float) -> float:
     return x_m * PIXELS_PER_METER
+
+# Welt→Bildschirm Abbildung (nur für Darstellung)
+OFFSET_LEFT_PX = 100.0
+BASELINE_PX = HEIGHT * 0.5
+
+def world_to_screen(p: pymunk.Vec2d | tuple[float, float]) -> tuple[float, float]:
+    x, y = (p.x, p.y) if isinstance(p, pymunk.Vec2d) else p
+    return (OFFSET_LEFT_PX + x * PIXELS_PER_METER, BASELINE_PX - y * PIXELS_PER_METER)
 
 
 class MassSpringChain:
@@ -76,7 +87,7 @@ class MassSpringChain:
         # Laufzeit-Parameter (veränderbar per Tastatur)
         self.gravity_presets = [
             (0.0, 0.0),
-            (0.0, 9.81 * PIXELS_PER_METER),
+            (0.0, -9.81),
         ]
         self.gravity_index = 0
         self.space.gravity = self.gravity_presets[self.gravity_index]
@@ -86,6 +97,9 @@ class MassSpringChain:
 
         self.impulse_time_s = IMPULSE_TIME_S
         self.anchor_lift_m = ANCHOR_LIFT_M
+
+        # Darstellungsradius aus SI-Radius ableiten
+        self.mass_radius_px = max(1, int(round(MASS_RADIUS_M * PIXELS_PER_METER)))
 
         # Zeitschritt
         self.dt = 1.0 / 120.0
@@ -104,37 +118,38 @@ class MassSpringChain:
         self.impulse_applied = False
 
     def _build_chain(self) -> None:
-        # Geometrie der Kette
-        rest_px = m_to_px(L0_M)          # Ruhelänge (entspannt)
-        span_px = m_to_px(LV_M)          # Start-Abstand (Vorspannung)
-        start_x = 100.0
-        baseline_y = HEIGHT * 0.5
+        # Geometrie der Kette (SI)
+        rest_m = L0_M
+        span_m = LV_M
+        start_x = 100.0  # nur Darstellung (linke Einrückung in px)
+        baseline_y = HEIGHT * 0.5  # nur Darstellung (y=0 in px)
 
         # Linker Anker (Kinematischer Körper, per Sprung bewegbar)
         self.left_anchor = pymunk.Body(body_type=pymunk.Body.KINEMATIC)
-        self.left_anchor_base = (start_x, baseline_y)
+        self.left_anchor_base = (0.0, 0.0)
         self.left_anchor.position = self.left_anchor_base
 
         # Rechter Anker (Wand) als statischer Körper an rechter Seite
-        wall_x = start_x + (N_MASSES + 1) * span_px
+        wall_x_m = (N_MASSES + 1) * span_m
         self.right_anchor = self.space.static_body
-        self.right_anchor_pos = (wall_x, baseline_y)
+        self.right_anchor_pos = (wall_x_m, 0.0)
 
-        # Optionale Darstellung der Wand (als dünnes Segment)
-        self.wall_shape = pymunk.Segment(self.right_anchor, (wall_x, 40), (wall_x, HEIGHT - 40), 1.0)
+        # Optionale Darstellung der Wand (als dünnes Segment in SI)
+        wall_half_h_m = max(0.1, (HEIGHT - 80) / PIXELS_PER_METER * 0.5)
+        self.wall_shape = pymunk.Segment(self.right_anchor, (wall_x_m, -wall_half_h_m), (wall_x_m, wall_half_h_m), 0.01)
         self.wall_shape.color = (*WALL_COLOR, 255)
         self.wall_shape.elasticity = 0.0
         self.wall_shape.friction = 0.0
         self.space.add(self.wall_shape)
 
-        # Massen erzeugen (Startpositionen mit Vorspannungsabstand)
+        # Massen erzeugen (Startpositionen mit Vorspannungsabstand, SI)
         for i in range(N_MASSES):
-            x = start_x + (i + 1) * span_px
-            y = baseline_y
-            moment = pymunk.moment_for_circle(MASS_KG, 0, MASS_RADIUS_PX)
+            x_m = (i + 1) * span_m
+            y_m = 0.0
+            moment = pymunk.moment_for_circle(MASS_KG, 0, MASS_RADIUS_M)
             body = pymunk.Body(MASS_KG, moment)
-            body.position = (x, y)
-            shape = pymunk.Circle(body, MASS_RADIUS_PX)
+            body.position = (x_m, y_m)
+            shape = pymunk.Circle(body, MASS_RADIUS_M)
             shape.color = (*MASS_COLOR, 255)
             shape.elasticity = 0.0
             shape.friction = 0.0
@@ -150,7 +165,7 @@ class MassSpringChain:
             self.bodies[0],
             (0, 0),
             (0, 0),
-            rest_px,
+            rest_m,
             SPRING_STIFFNESS,
             SPRING_DAMPING,
         )
@@ -163,7 +178,7 @@ class MassSpringChain:
                 self.bodies[i],
                 (0, 0),
                 (0, 0),
-                rest_px,
+                rest_m,
                 SPRING_STIFFNESS,
                 SPRING_DAMPING,
             )
@@ -175,7 +190,7 @@ class MassSpringChain:
             self.right_anchor,
             (0, 0),
             self.right_anchor_pos,
-            rest_px,
+            rest_m,
             SPRING_STIFFNESS,
             SPRING_DAMPING,
         )
@@ -184,10 +199,9 @@ class MassSpringChain:
         self.space.add(*self.springs)
 
     def _apply_first_spring_impulse(self) -> None:
-        # Einmaliger Sprung des linken Ankers nach oben
-        lift_px = m_to_px(self.anchor_lift_m)
+        # Einmaliger Sprung des linken Ankers nach oben (SI)
         x, y = self.left_anchor.position
-        self.left_anchor.position = (x, y - lift_px)
+        self.left_anchor.position = (x, y + self.anchor_lift_m)
         self.impulse_applied = True
 
     def _process_events(self) -> None:
@@ -247,32 +261,32 @@ class MassSpringChain:
 
         # Federn als Linien zeichnen (inkl. Enden)
         # Linker Anker → erste Masse
-        p0 = self.left_anchor.position
-        p1 = self.bodies[0].position
-        pygame.draw.line(self.screen, LINE_COLOR, (p0.x, p0.y), (p1.x, p1.y), 1)
+        p0 = world_to_screen(self.left_anchor.position)
+        p1 = world_to_screen(self.bodies[0].position)
+        pygame.draw.line(self.screen, LINE_COLOR, p0, p1, 1)
 
         # Zwischen Massen
         for i in range(1, N_MASSES):
-            a = self.bodies[i - 1].position
-            b = self.bodies[i].position
-            pygame.draw.line(self.screen, LINE_COLOR, (a.x, a.y), (b.x, b.y), 1)
+            a = world_to_screen(self.bodies[i - 1].position)
+            b = world_to_screen(self.bodies[i].position)
+            pygame.draw.line(self.screen, LINE_COLOR, a, b, 1)
 
         # Letzte Masse → rechte Wand
-        last = self.bodies[-1].position
-        pygame.draw.line(self.screen, LINE_COLOR, (last.x, last.y), self.right_anchor_pos, 1)
+        last = world_to_screen(self.bodies[-1].position)
+        wall = world_to_screen(self.right_anchor_pos)
+        pygame.draw.line(self.screen, LINE_COLOR, last, wall, 1)
 
-        # Massen als kleine Kreise
+        # Massen als kleine Kreise (Darstellung)
         for body in self.bodies:
-            pygame.draw.circle(
-                self.screen, MASS_COLOR, (int(body.position.x), int(body.position.y)), MASS_RADIUS_PX
-            )
+            sx, sy = world_to_screen(body.position)
+            pygame.draw.circle(self.screen, MASS_COLOR, (int(sx), int(sy)), self.mass_radius_px)
 
         # Optionale Debug-Zeichnung der Shapes (kleine Kreise) und Wand
         # self.space.debug_draw(self.draw_options)
 
         # HUD
         lines = [
-            f"g: {self.space.gravity[1] / PIXELS_PER_METER:0.2f} m/s^2  (g toggeln: G)",
+            f"g: {self.space.gravity[1]:0.2f} m/s^2  (g toggeln: G)",
             f"damping: {self.space.damping:0.3f}  (1/2 -/+)",
             f"impulse_time: {self.impulse_time_s:0.2f}s  (5/6 -/+)",
             f"impulse_lift: {self.anchor_lift_m:0.2f} m  (3/4 -/+)",
